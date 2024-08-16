@@ -101,12 +101,12 @@ Vector2 get_sprite_size(Sprite* sprite){
 // Entity
 typedef enum EntityArchetype {
 	ARCH_nil = 0,
-	ARCH_player = 1,
-	ARCH_barrel = 2,
-	ARCH_tree = 3,
-	ARCH_item_rock = 4,
-	ARCH_item_wood = 5,
-	ARCH_wardrobe = 6,
+	ARCH_barrel = 1,
+	ARCH_tree = 2,
+	ARCH_item_rock = 3,
+	ARCH_item_wood = 4,
+	ARCH_wardrobe = 5,
+	ARCH_player = 6,
 	ARCH_MAX,
 } EntityArchetype;
 
@@ -761,139 +761,6 @@ int entry(int argc, char **argv) {
 			}
 		}
 
-		// UI Rendering
-		{
-			float width = 240.0;
-			float height = 135.0;
-			draw_frame.view = m4_scalar(1.0) ;
-			draw_frame.projection = m4_make_orthographic_projection(0.0, width, 0.0, height, -1, 10);
-
-			// Toggel Inventory
-			if (is_key_just_pressed(KEY_TAB)) {
-				consume_key_just_pressed(KEY_TAB);
-				world->ux_state = (world->ux_state == UX_inventory ? UX_nil : UX_inventory);
-			}
-			world->inventory_alpha_target = (world->ux_state == UX_inventory ? 1.0 : 0.0);
-			animate_f32_to_target(&world->inventory_alpha, world->inventory_alpha_target, delta_t, 15.0);
-			bool is_inventory_enabled = world->inventory_alpha_target == 1.0;
-
-			// Inventory UI
-			if (world->inventory_alpha_target != 0.0) {
-				float y_pos = 70.0;
-
-				int item_count = 0;
-				for (int i = 0; i < ARCH_MAX; i++) {
-					ItemData* item = &world->inventory_items[i];
-					if (item->amount > 0) {
-						item_count += 1;
-					}
-				}
-
-				const float icon_width = 8.0;
-				const int icon_row_count = 8;
-
-				float entire_thing_width_idk = icon_row_count * icon_width;
-				float x_start_pos = (width/2.0)-(entire_thing_width_idk/2.0);
-
-				//Background Box Rendering
-				{
-					Matrix4 xform = m4_identity;
-					xform = m4_translate(xform, v3(x_start_pos, y_pos, 0.0));
-					draw_rect_xform(xform, v2(entire_thing_width_idk, icon_width), bg_box_col);
-				}
-
-				int slot_index = 0;
-				for (int i = 0; i < ARCH_MAX; i++) {
-					ItemData* item = &world->inventory_items[i];
-					if (item->amount > 0) {
-
-						float slot_index_offset = slot_index * icon_width;
-
-						Matrix4 xform = m4_scalar(1.0);
-						xform = m4_translate(xform, v3(x_start_pos + slot_index_offset, y_pos, 0.0));
-						Sprite* sprite = get_sprite(get_sprite_id_from_archetype(i));
-
-						Draw_Quad* quad = draw_rect_xform(xform, v2(icon_width, icon_width), v4(1, 1, 1, 0.2));
-						Range2f icon_box = quad_to_range(*quad);
-
-						Matrix4 box_bottom_right_xform = xform;
-						xform = m4_translate(xform, v3(icon_width * 0.5, icon_width * 0.5, 0.0));
-
-						// Toggle Hover Icon
-						float is_selected_alpha = 0.0;
-						if (is_inventory_enabled && range2f_contains(icon_box, get_mouse_pos_in_ndc())) {
-							is_selected_alpha = 1.0;
-						}
-
-						if (is_selected_alpha == 1.0)
-						{
-							// Scale Icon
-							{
-								float scale_adjust = 0.3; 
-								//0.1 * sin_breathe(os_get_current_time_in_seconds(), 20.0);
-								xform = m4_scale(xform, v3(1 + scale_adjust, 1 + scale_adjust, 1));
-							}
-							// Rotate Icon
-							{
-								// float adjust = PI32 * 2.0 * sin_breathe(os_get_current_time_in_seconds(), 1.0);
-								// xform = m4_rotate_z(xform, adjust);
-							}
-						}
-
-						xform = m4_translate(xform, v3(get_sprite_size(sprite).x * -0.5, get_sprite_size(sprite).y * -0.5, 0));
-						draw_image_xform(sprite->image, xform, get_sprite_size(sprite), COLOR_WHITE);
-
-						// Tooltip UI
-						if (is_selected_alpha == 1.0)
-						{
-							Draw_Quad screen_quad = ndc_quad_to_screen_quad(*quad);
-							Range2f screen_range = quad_to_range(screen_quad);
-							Vector2 icon_center = range2f_get_center(screen_range);
-							Vector2 box_size = v2(40, 14);
-
-							Matrix4 xform = m4_scalar(1.0);
-							xform = m4_translate(xform, v3(box_size.x * -0.5, -box_size.y - icon_width * 0.5, 0));
-							xform = m4_translate(xform, v3(icon_center.x, icon_center.y, 0));
-							draw_rect_xform(xform, box_size, bg_box_col);
-							
-							// Tool Tip Text
-							float current_y_pos = icon_center.y;
-							// Name Text
-							{
-								string title = get_archetype_pretty_name(i);
-								Gfx_Text_Metrics metrics = measure_text(font, title, font_height, v2(0.1, 0.1));
-								Vector2 draw_pos = icon_center;
-								draw_pos = v2_sub(draw_pos, metrics.visual_pos_min);
-								draw_pos = v2_add(draw_pos, v2_mul(metrics.visual_size, v2(-0.5, -1.0))); // top center
-
-								draw_pos = v2_add(draw_pos, v2(0, icon_width * -0.5));
-								draw_pos = v2_add(draw_pos, v2(0, -2.0)); // padding
-
-								draw_text(font, title, font_height, draw_pos, v2(0.1, 0.1), COLOR_WHITE);
-
-								current_y_pos = draw_pos.y;
-							}
-							// Amount Text
-							{
-								string text = STR("x%i");
-								text = sprint(temp_allocator, text, item->amount);
-
-								Gfx_Text_Metrics metrics = measure_text(font, text, font_height, v2(0.1, 0.1));
-								Vector2 draw_pos = v2(icon_center.x, current_y_pos);
-								draw_pos = v2_sub(draw_pos, metrics.visual_pos_min);
-								draw_pos = v2_add(draw_pos, v2_mul(metrics.visual_size, v2(-0.5, -1.0))); // top center
-
-								draw_pos = v2_add(draw_pos, v2(0, -2.0)); // padding
-
-								draw_text(font, text, font_height, draw_pos, v2(0.1, 0.1), COLOR_WHITE);
-							}
-						}
-						slot_index += 1;
-					}
-				}
-			}
-		}
-
 		// Player Movement
 		{
 			Vector2 input_axis = v2(0, 0);
@@ -912,7 +779,6 @@ int entry(int argc, char **argv) {
 			input_axis = v2_normalize(input_axis);
 			player_en->pos = v2_add(player_en->pos, v2_mulf(input_axis, delta_t * player_speed));
 		}
-
 
 		if(is_key_just_pressed(KEY_ESCAPE)){
 			window.should_close = true;
