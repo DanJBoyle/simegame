@@ -534,6 +534,8 @@ int entry(int argc, char **argv) {
 	window.y = 90;
 	window.clear_color = hex_to_rgba(0x2a2d3aff);
 
+	float zoom = 5.3f * GetDpiForWindow(window._os_handle) / 96.0f;
+
 	world = alloc(get_heap_allocator(), sizeof(World));
 	memset(world, 0, sizeof(World));
 
@@ -578,10 +580,6 @@ int entry(int argc, char **argv) {
 		en->pos = round_v2_to_tile_pos(en->pos);
 	}
 
-	Entity* en = entity_create();
-	setup_wardrobe(en);
-
-	float zoom = 5.3;
 	Vector2 camera_pos = v2(0, 0);
 	float64 last_time = os_get_current_time_in_seconds();
 
