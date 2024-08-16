@@ -320,229 +320,205 @@ void do_ui_stuff() {
 	set_screen_space();
 	push_z_layer(layer_ui);
 
-	// "screen space"
-
-	// :inventory UI
-	{
-		if (is_key_just_pressed(KEY_TAB)) {
-			consume_key_just_pressed(KEY_TAB);
-			world->ux_state = (world->ux_state == UX_inventory ? UX_nil : UX_inventory);
+	//Toggle Inventory
+	if (is_key_just_pressed(KEY_TAB)) {
+		consume_key_just_pressed(KEY_TAB);
+		world->ux_state = (world->ux_state == UX_inventory ? UX_nil : UX_inventory);
+	}
+	
+	//Inventory anim
+	world->inventory_alpha_target = (world->ux_state == UX_inventory ? 1.0 : 0.0);
+	animate_f32_to_target(&world->inventory_alpha, world->inventory_alpha_target, delta_t, 15.0);
+	bool is_inventory_enabled = world->inventory_alpha_target == 1.0;
+	
+	// Inventory UI
+	if (world->inventory_alpha_target != 0.0) {
+		int item_count = 0;
+		for (int i = 0; i < ARCH_MAX; i++) {
+			ItemData* item = &world->inventory_items[i];
+			if (item->amount > 0) {
+				item_count += 1;
+			}
 		}
-		world->inventory_alpha_target = (world->ux_state == UX_inventory ? 1.0 : 0.0);
-		animate_f32_to_target(&world->inventory_alpha, world->inventory_alpha_target, delta_t, 15.0);
-		bool is_inventory_enabled = world->inventory_alpha_target == 1.0;
-		if (world->inventory_alpha_target != 0.0)
-		{
-			// TODO - some opacity thing here.
-			float y_pos = 70.0;
 
-			int item_count = 0;
-			for (int i = 0; i < ARCH_MAX; i++) {
-				ItemData* item = &world->inventory_items[i];
-				if (item->amount > 0) {
-					item_count += 1;
+		const float y_pos = 70.0;
+		const float icon_width = 8.0;
+		const int icon_row_count = 8;
+
+		float inventory_width = icon_row_count * icon_width;
+		float x_start_pos = (screen_width/2.0)-(inventory_width/2.0);
+
+		//Background UI
+		Matrix4 xform = m4_identity;
+		xform = m4_translate(xform, v3(x_start_pos, y_pos, 0.0));
+		draw_rect_xform(xform, v2(inventory_width, icon_width), bg_box_col);
+
+		int slot_index = 0;
+		for (int i = 0; i < ARCH_MAX; i++) {
+			ItemData* item = &world->inventory_items[i];
+			if (item->amount > 0) {
+
+				Sprite* sprite = get_sprite(get_sprite_id_from_archetype(i));
+
+				float slot_index_offset = slot_index * icon_width;
+				Matrix4 xform = m4_scalar(1.0);
+				xform = m4_translate(xform, v3(x_start_pos + slot_index_offset, y_pos, 0.0));
+
+				float is_selected_alpha = 0.0;
+				Draw_Quad* quad = draw_rect_xform(xform, v2(8, 8), v4(1, 1, 1, 0.2));
+				Range2f icon_box = quad_to_range(*quad);
+
+				if (is_inventory_enabled && range2f_contains(icon_box, get_mouse_pos_in_ndc())) {
+					is_selected_alpha = 1.0;
 				}
-			}
 
-			const float icon_thing = 8.0;
-			float icon_width = icon_thing;
+				Matrix4 box_bottom_right_xform = xform;
 
-			const int icon_row_count = 8;
+				xform = m4_translate(xform, v3(icon_width * 0.5, icon_width * 0.5, 0.0));
 
-			float entire_thing_width_idk = icon_row_count * icon_width;
-			float x_start_pos = (screen_width/2.0)-(entire_thing_width_idk/2.0);
+				if (is_selected_alpha == 1.0)
+				{
+					float scale_adjust = 0.3; //0.1 * sin_breathe(os_get_current_time_in_seconds(), 20.0);
+					xform = m4_scale(xform, v3(1 + scale_adjust, 1 + scale_adjust, 1));
+				}
+				{
+					// could also rotate ...
+					// float adjust = PI32 * 2.0 * sin_breathe(os_get_current_time_in_seconds(), 1.0);
+					// xform = m4_rotate_z(xform, adjust);
+				}
+				xform = m4_translate(xform, v3(get_sprite_size(sprite).x * -0.5, get_sprite_size(sprite).y * -0.5, 0));
+				draw_image_xform(sprite->image, xform, get_sprite_size(sprite), COLOR_WHITE);
 
-			// bg box rendering thing
-			{
-				Matrix4 xform = m4_identity;
-				xform = m4_translate(xform, v3(x_start_pos, y_pos, 0.0));
-				draw_rect_xform(xform, v2(entire_thing_width_idk, icon_width), bg_box_col);
-			}
+				// Tooltip
+				if (is_selected_alpha == 1.0) {
+					Draw_Quad screen_quad = ndc_quad_to_screen_quad(*quad);
+					Range2f screen_range = quad_to_range(screen_quad);
+					Vector2 icon_center = range2f_get_center(screen_range);
 
-			int slot_index = 0;
-			for (int i = 0; i < ARCH_MAX; i++) {
-				ItemData* item = &world->inventory_items[i];
-				if (item->amount > 0) {
-
-					float slot_index_offset = slot_index * icon_width;
-
+					// icon_center
 					Matrix4 xform = m4_scalar(1.0);
-					xform = m4_translate(xform, v3(x_start_pos + slot_index_offset, y_pos, 0.0));
+					Vector2 box_size = v2(40, 14);
 
-					Sprite* sprite = get_sprite(get_sprite_id_from_archetype(i));
+					xform = m4_translate(xform, v3(box_size.x * -0.5, -box_size.y - icon_width * 0.5, 0));
+					xform = m4_translate(xform, v3(icon_center.x, icon_center.y, 0));
+					draw_rect_xform(xform, box_size, bg_box_col);
 
-					float is_selected_alpha = 0.0;
-
-					Draw_Quad* quad = draw_rect_xform(xform, v2(8, 8), v4(1, 1, 1, 0.2));
-					Range2f icon_box = quad_to_range(*quad);
-					if (is_inventory_enabled && range2f_contains(icon_box, get_mouse_pos_in_ndc())) {
-						is_selected_alpha = 1.0;
-					}
-
-					Matrix4 box_bottom_right_xform = xform;
-
-					xform = m4_translate(xform, v3(icon_width * 0.5, icon_width * 0.5, 0.0));
-
-					if (is_selected_alpha == 1.0)
+					float current_y_pos = icon_center.y;
 					{
-						float scale_adjust = 0.3; //0.1 * sin_breathe(os_get_current_time_in_seconds(), 20.0);
-						xform = m4_scale(xform, v3(1 + scale_adjust, 1 + scale_adjust, 1));
+						string title = get_archetype_pretty_name(i);
+						Gfx_Text_Metrics metrics = measure_text(font, title, font_height, v2(0.1, 0.1));
+						Vector2 draw_pos = icon_center;
+						draw_pos = v2_sub(draw_pos, metrics.visual_pos_min);
+						draw_pos = v2_add(draw_pos, v2_mul(metrics.visual_size, v2(-0.5, -1.0))); // top center
+
+						draw_pos = v2_add(draw_pos, v2(0, icon_width * -0.5));
+						draw_pos = v2_add(draw_pos, v2(0, -2.0)); // padding
+
+						draw_text(font, title, font_height, draw_pos, v2(0.1, 0.1), COLOR_WHITE);
+
+						current_y_pos = draw_pos.y;
 					}
+
 					{
-						// could also rotate ...
-						// float adjust = PI32 * 2.0 * sin_breathe(os_get_current_time_in_seconds(), 1.0);
-						// xform = m4_rotate_z(xform, adjust);
+						string text = STR("x%i");
+						text = sprint(temp_allocator, text, item->amount);
+
+						Gfx_Text_Metrics metrics = measure_text(font, text, font_height, v2(0.1, 0.1));
+						Vector2 draw_pos = v2(icon_center.x, current_y_pos);
+						draw_pos = v2_sub(draw_pos, metrics.visual_pos_min);
+						draw_pos = v2_add(draw_pos, v2_mul(metrics.visual_size, v2(-0.5, -1.0))); // top center
+
+						draw_pos = v2_add(draw_pos, v2(0, -2.0)); // padding
+
+						draw_text(font, text, font_height, draw_pos, v2(0.1, 0.1), COLOR_WHITE);
 					}
-					xform = m4_translate(xform, v3(get_sprite_size(sprite).x * -0.5, get_sprite_size(sprite).y * -0.5, 0));
-					draw_image_xform(sprite->image, xform, get_sprite_size(sprite), COLOR_WHITE);
-
-					// draw_text_xform(font, STR("5"), font_height, box_bottom_right_xform, v2(0.1, 0.1), COLOR_WHITE);
-
-					// tooltip
-					if (is_selected_alpha == 1.0)
-					{
-						Draw_Quad screen_quad = ndc_quad_to_screen_quad(*quad);
-						Range2f screen_range = quad_to_range(screen_quad);
-						Vector2 icon_center = range2f_get_center(screen_range);
-
-						// icon_center
-						Matrix4 xform = m4_scalar(1.0);
-
-						// TODO - we're guessing at the Y box size here.
-						// in order to automate this, we would need to move it down below after we do all the element advance things for the text.
-						// ... but then the box would be drawing in front of everyone. So we'd have to do Z sorting.
-						// Solution for now is to just guess at the size and OOGA BOOGA.
-						Vector2 box_size = v2(40, 14);
-
-						// xform = m4_pivot_box(xform, box_size, PIVOT_top_center);
-						xform = m4_translate(xform, v3(box_size.x * -0.5, -box_size.y - icon_width * 0.5, 0));
-						xform = m4_translate(xform, v3(icon_center.x, icon_center.y, 0));
-						draw_rect_xform(xform, box_size, bg_box_col);
-
-						float current_y_pos = icon_center.y;
-						{
-							string title = get_archetype_pretty_name(i);
-							Gfx_Text_Metrics metrics = measure_text(font, title, font_height, v2(0.1, 0.1));
-							Vector2 draw_pos = icon_center;
-							draw_pos = v2_sub(draw_pos, metrics.visual_pos_min);
-							draw_pos = v2_add(draw_pos, v2_mul(metrics.visual_size, v2(-0.5, -1.0))); // top center
-
-							draw_pos = v2_add(draw_pos, v2(0, icon_width * -0.5));
-							draw_pos = v2_add(draw_pos, v2(0, -2.0)); // padding
-
-							draw_text(font, title, font_height, draw_pos, v2(0.1, 0.1), COLOR_WHITE);
-
-							current_y_pos = draw_pos.y;
-						}
-
-						{
-							string text = STR("x%i");
-							text = sprint(temp_allocator, text, item->amount);
-
-							Gfx_Text_Metrics metrics = measure_text(font, text, font_height, v2(0.1, 0.1));
-							Vector2 draw_pos = v2(icon_center.x, current_y_pos);
-							draw_pos = v2_sub(draw_pos, metrics.visual_pos_min);
-							draw_pos = v2_add(draw_pos, v2_mul(metrics.visual_size, v2(-0.5, -1.0))); // top center
-
-							draw_pos = v2_add(draw_pos, v2(0, -2.0)); // padding
-
-							draw_text(font, text, font_height, draw_pos, v2(0.1, 0.1), COLOR_WHITE);
-						}
-					}
-
-					slot_index += 1;
 				}
+
+				slot_index += 1;
 			}
 		}
 	}
 
-	// :building ui
-	{
-		if (is_key_just_pressed('C')) {
-			consume_key_just_pressed('C');
-			world->ux_state = (world->ux_state == UX_building ? UX_nil : UX_building);
-		}
-
-		world->building_alpha_target = (world->ux_state == UX_building ? 1.0 : 0.0);
-		animate_f32_to_target(&world->building_alpha, world->building_alpha_target, delta_t, 15.0);
-		bool is_building_enabled = world->building_alpha_target == 1.0;
-
-		// draw a row of icons for buildable structures
-		if (world->building_alpha_target == 1.0) {
-			int building_count = BUILDING_MAX-1;
-
-			float icon_size = 12.0;
-			float total_box_width = building_count * icon_size;
-
-			float padding = 2.0;
-			total_box_width += padding * (building_count + 1);
-
-			for (BuildingID i = 1; i < BUILDING_MAX; i++) {
-				BuildingData* building = &buildings[i];
-
-				Matrix4 xform = m4_identity;
-
-				float x0 = (screen_width * 0.5) - (total_box_width * 0.5);
-				x0 += (i-1) * icon_size;
-				x0 += padding * i;
-				xform = m4_translate(xform, v3(x0, 10, 0));
-
-				Sprite* icon = get_sprite(building->icon);
-				// todo - make a draw_sprite_xform, that auto sizes properly
-				Draw_Quad* quad = draw_image_xform(icon->image, xform, v2(icon_size, icon_size), COLOR_WHITE);
-				Range2f box = quad_to_range(*quad);
-
-				if (range2f_contains(box, get_mouse_pos_in_ndc())) {
-					// if hover, do tooltip, that follows the mouse around
-
-					world_frame.hover_consumed = true;
-
-					// if click, go into place mode
-					if (is_key_just_pressed(MOUSE_BUTTON_LEFT)) {
-						consume_key_just_pressed(MOUSE_BUTTON_LEFT);
-						world->placing_building = i;
-						world->ux_state = UX_place_mode;
-					}
-				}
-
-				// draw_rect_xform(xform, v2(icon_size, icon_size), COLOR_WHITE);
-			}
-		}
+	// Toggle Building UI
+	if (is_key_just_pressed('C')) {
+		consume_key_just_pressed('C');
+		world->ux_state = (world->ux_state == UX_building ? UX_nil : UX_building);
 	}
 
-	// :placement mode
-	// TODO - alpha animation for place mode
-	if (world->ux_state == UX_place_mode)
-	{
-		Vector2 mouse_pos_world = get_mouse_pos_in_world_space();
+	// Building UI anim
+	world->building_alpha_target = (world->ux_state == UX_building ? 1.0 : 0.0);
+	animate_f32_to_target(&world->building_alpha, world->building_alpha_target, delta_t, 15.0);
+	bool is_building_enabled = world->building_alpha_target == 1.0;
 
-		// TODO - put this into macro :)
-		set_world_space();
-		{
-			// mouse_pos_world;
-			Vector2 mouse_pos_world = get_mouse_pos_in_world_space();
-			BuildingData building = get_building_data(world->placing_building);
-			Sprite* icon = get_sprite(building.icon);
+	// Building UI
+	if (world->building_alpha_target == 1.0) {
+		int building_count = BUILDING_MAX-1;
 
-			Vector2 pos = mouse_pos_world;
-			pos = round_v2_to_tile_pos(pos);
+		float icon_size = 12.0;
+		float total_box_width = building_count * icon_size;
+
+		float padding = 2.0;
+		total_box_width += padding * (building_count + 1);
+
+		for (BuildingID i = 1; i < BUILDING_MAX; i++) {
+			BuildingData* building = &buildings[i];
 
 			Matrix4 xform = m4_identity;
-			xform = m4_translate(xform, v3(pos.x, pos.y, 0));
-			// @volatile with entity rendering
-			xform = m4_translate(xform, v3(0, tile_width * -0.5, 0));
-			xform = m4_translate(xform, v3(get_sprite_size(icon).x * -0.5, 0.0, 0));
-			draw_image_xform(icon->image, xform, get_sprite_size(icon), COLOR_WHITE);
-		
-			if (is_key_just_pressed(MOUSE_BUTTON_LEFT)) {
-				consume_key_just_pressed(MOUSE_BUTTON_LEFT);
-				Entity* en = entity_create();
-				entity_setup(en, building.to_build);
-				en->pos = pos;
-				world->ux_state = 0;
+
+			float x0 = (screen_width * 0.5) - (total_box_width * 0.5);
+			x0 += (i-1) * icon_size;
+			x0 += padding * i;
+			xform = m4_translate(xform, v3(x0, 10, 0));
+
+			Sprite* icon = get_sprite(building->icon);
+			// todo - make a draw_sprite_xform, that auto sizes properly
+			Draw_Quad* quad = draw_image_xform(icon->image, xform, v2(icon_size, icon_size), COLOR_WHITE);
+			Range2f box = quad_to_range(*quad);
+
+			if (range2f_contains(box, get_mouse_pos_in_ndc())) {
+				// if hover, do tooltip, that follows the mouse around
+
+				world_frame.hover_consumed = true;
+
+				// if click, go into place mode
+				if (is_key_just_pressed(MOUSE_BUTTON_LEFT)) {
+					consume_key_just_pressed(MOUSE_BUTTON_LEFT);
+					world->placing_building = i;
+					world->ux_state = UX_place_mode;
+				}
 			}
 		}
+	}
+
+	// Placement Mode UI
+	if (world->ux_state == UX_place_mode) {
+
+		set_world_space();
+
+		Vector2 mouse_pos_world = get_mouse_pos_in_world_space();
+		BuildingData building = get_building_data(world->placing_building);
+		Sprite* icon = get_sprite(building.icon);
+
+		Vector2 pos = mouse_pos_world;
+		pos = round_v2_to_tile_pos(pos);
+
+		Matrix4 xform = m4_identity;
+		xform = m4_translate(xform, v3(pos.x, pos.y, 0));
+		// @volatile with entity rendering
+		xform = m4_translate(xform, v3(0, tile_width * -0.5, 0));
+		xform = m4_translate(xform, v3(get_sprite_size(icon).x * -0.5, 0.0, 0));
+		draw_image_xform(icon->image, xform, get_sprite_size(icon), COLOR_WHITE);
+	
+		if (is_key_just_pressed(MOUSE_BUTTON_LEFT)) {
+			consume_key_just_pressed(MOUSE_BUTTON_LEFT);
+			Entity* en = entity_create();
+			entity_setup(en, building.to_build);
+			en->pos = pos;
+			world->ux_state = 0;
+		}
+
 		set_screen_space();
+
 	}
 
 	set_world_space();
@@ -579,11 +555,9 @@ int entry(int argc, char **argv) {
 	sprites[SPRITE_item_rock] 	= (Sprite){ .image = load_image_from_disk(STR("res/sprites/item_rock.png"), get_heap_allocator())};
 	sprites[SPRITE_wardrobe] 	= (Sprite){ .image = load_image_from_disk(STR("res/sprites/wardrobe.png"), get_heap_allocator())};
 
-	{
-		for (SpriteID i = 0; i < SPRITE_MAX; i++) {
-			Sprite* sprite = &sprites[i];
-			assert(sprite->image, "Sprite was not setup properly");
-		}
+	for (SpriteID i = 0; i < SPRITE_MAX; i++) {
+		Sprite* sprite = &sprites[i];
+		assert(sprite->image, "Sprite was not setup properly");
 	}
 
 	//Generate Entitys
@@ -611,6 +585,7 @@ int entry(int argc, char **argv) {
 	Vector2 camera_pos = v2(0, 0);
 	float64 last_time = os_get_current_time_in_seconds();
 
+	//Run Game
 	while (!window.should_close) {
 		reset_temporary_storage();
 		world_frame = (WorldFrame){0};
@@ -635,7 +610,6 @@ int entry(int argc, char **argv) {
 
 		set_world_space();
 		push_z_layer(layer_world);
-
 		do_ui_stuff();
 		
 		//Render Tiles
@@ -683,7 +657,7 @@ int entry(int argc, char **argv) {
 			}
 		}
 
-		// Update Entities
+		// Pickup Items
 		for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
 			Entity* en = &world->entities[i];
 			if (en->is_valid) {
@@ -762,23 +736,21 @@ int entry(int argc, char **argv) {
 		}
 
 		// Player Movement
-		{
-			Vector2 input_axis = v2(0, 0);
-			if (is_key_down('A')) {
-				input_axis.x -= 1.0;
-			}
-			if (is_key_down('D')) {
-				input_axis.x += 1.0;
-			}
-			if (is_key_down('S')) {
-				input_axis.y -= 1.0;
-			}
-			if (is_key_down('W')) {
-				input_axis.y += 1.0;
-			}
-			input_axis = v2_normalize(input_axis);
-			player_en->pos = v2_add(player_en->pos, v2_mulf(input_axis, delta_t * player_speed));
+		Vector2 input_axis = v2(0, 0);
+		if (is_key_down('A')) {
+			input_axis.x -= 1.0;
 		}
+		if (is_key_down('D')) {
+			input_axis.x += 1.0;
+		}
+		if (is_key_down('S')) {
+			input_axis.y -= 1.0;
+		}
+		if (is_key_down('W')) {
+			input_axis.y += 1.0;
+		}
+		input_axis = v2_normalize(input_axis);
+		player_en->pos = v2_add(player_en->pos, v2_mulf(input_axis, delta_t * player_speed));
 
 		if(is_key_just_pressed(KEY_ESCAPE)){
 			window.should_close = true;
